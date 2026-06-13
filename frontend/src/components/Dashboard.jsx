@@ -1,252 +1,161 @@
 import { useState, useEffect } from "react";
-import { getDashboardStats } from "../services/api";
+import { getQueue } from "../services/api";
 
-const statCards = [
-  { key: "total_patients",   label: "Total Patients",  icon: "👥", color: "#185FA5" },
-  { key: "critical_count",   label: "Critical",        icon: "🔴", color: "#A32D2D" },
-  { key: "icu_allocated",    label: "ICU Allocated",   icon: "🏥", color: "#854F0B" },
-  { key: "avg_score",        label: "Avg. Score",      icon: "📊", color: "#3B6D11" },
-];
-
-const severityColors = {
-  CRITICAL: "#E24B4A",
-  HIGH:     "#EF9F27",
-  MEDIUM:   "#378ADD",
-  LOW:      "#639922",
+const SEV_COLORS = {
+  critical: "#dc2626", severe: "#dc2626",
+  moderate: "#d97706", high: "#d97706",
+  mild: "#1d4ed8",     medium: "#1d4ed8",
+  low: "#15803d",      stable: "#15803d",
 };
 
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div className="db-stat">
-      <div className="db-stat-top">
-        <span className="db-stat-icon">{icon}</span>
-        <span className="db-stat-label">{label}</span>
-      </div>
-      <span className="db-stat-value" style={{ color }}>{value ?? "—"}</span>
-    </div>
-  );
-}
-
-function SeverityBar({ label, count, total }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-  const color = severityColors[label] || "#888";
-  return (
-    <div className="db-sev-row">
-      <span className="db-sev-label">{label}</span>
-      <div className="db-sev-track">
-        <div className="db-sev-fill" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="db-sev-count">{count}</span>
-      <span className="db-sev-pct">{pct}%</span>
-    </div>
-  );
-}
-
-export default function Dashboard({ refreshTrigger }) {
-  const [stats, setStats] = useState(null);
+export default function Dashboard() {
+  const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError]   = useState(null);
 
-  const fetchStats = async () => {
-    setLoading(true);
-    setError(null);
+  const load = async () => {
+    setLoading(true); setError(null);
     try {
-      const data = await getDashboardStats();
-      setStats(data);
-    } catch (err) {
-      setError(err.message);
+      const res = await getQueue();
+      setData(res);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, [refreshTrigger]);
+  useEffect(() => { load(); }, []);
 
-  const severityDist = stats?.severity_distribution || {};
-  const total = stats?.total_patients || 0;
+  const queue = data?.queue || [];
+  const total = data?.total_patients || 0;
+  const resources = data?.resources || {};
+
+  const dist = { critical: 0, severe: 0, moderate: 0, mild: 0 };
+  queue.forEach((r) => {
+    const s = r.result?.severity?.toLowerCase();
+    if (dist[s] !== undefined) dist[s]++;
+  });
+
+  const icuUsed = queue.filter((r) => r.allocated_resource).length;
+  const avgScore = queue.length
+    ? (queue.reduce((s, r) => s + (r.result?.score || 0), 0) / queue.length).toFixed(2)
+    : "0.00";
+
+  const topCritical = [...queue]
+    .sort((a, b) => (b.result?.score ?? 0) - (a.result?.score ?? 0))
+    .slice(0, 3);
+
+  const sevGroups = [
+    { key: "critical", label: "Critical", color: "#dc2626" },
+    { key: "severe",   label: "Severe",   color: "#dc2626" },
+    { key: "moderate", label: "Moderate", color: "#d97706" },
+    { key: "mild",     label: "Mild",     color: "#1d4ed8" },
+  ];
 
   return (
-    <div className="db-wrap">
-      <div className="db-header">
+    <div className="card">
+      <div className="card-head">
         <div>
-          <h2 className="db-title">AI Triage Dashboard</h2>
-          <p className="db-subtitle">Real-time patient criticality overview</p>
+          <div className="card-title">Dashboard</div>
+          <div className="card-sub">Real-time patient criticality overview</div>
         </div>
-        <button className="db-refresh" onClick={fetchStats} title="Refresh dashboard">
-          ↻ Refresh
-        </button>
+        <button className="btn-ghost-dark" onClick={load}>↻ Refresh</button>
       </div>
 
-      {loading && <div className="db-state">Loading dashboard...</div>}
-      {error && <div className="db-state db-error">⚠ {error}</div>}
+      {loading && <div className="empty">Loading...</div>}
+      {error   && <div className="err">⚠ {error}</div>}
 
-      {!loading && !error && stats && (
+      {!loading && !error && (
         <>
-          <div className="db-stats-grid">
-            {statCards.map(({ key, label, icon, color }) => (
-              <StatCard
-                key={key}
-                icon={icon}
-                label={label}
-                color={color}
-                value={
-                  key === "avg_score"
-                    ? stats[key]?.toFixed(1)
-                    : stats[key]
-                }
-              />
-            ))}
-          </div>
-
-          <div className="db-section">
-            <h3 className="db-section-title">Severity Distribution</h3>
-            <div className="db-sev-list">
-              {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
-                <SeverityBar
-                  key={sev}
-                  label={sev}
-                  count={severityDist[sev] || 0}
-                  total={total}
-                />
-              ))}
+          <div className="stats">
+            <div className="stat">
+              <div className="stat-label">Total patients</div>
+              <div className="stat-value">{total}</div>
             </div>
-          </div>
-
-          {stats.top_critical?.length > 0 && (
-            <div className="db-section">
-              <h3 className="db-section-title">Top Critical Patients</h3>
-              <div className="db-critical-list">
-                {stats.top_critical.map((p) => (
-                  <div key={p.patient_id} className="db-critical-row">
-                    <span className="db-critical-id">{p.patient_id}</span>
-                    <div className="db-critical-info">
-                      <span>Age {p.age}</span>
-                      <span>HR {p.heart_rate}</span>
-                      <span>SpO₂ {p.spo2}%</span>
-                    </div>
-                    <span className="db-critical-score" style={{ color: "#A32D2D" }}>
-                      {p.score?.toFixed(1)}
-                    </span>
-                    {p.icu_allocated && (
-                      <span className="db-critical-icu">ICU</span>
-                    )}
-                  </div>
-                ))}
+            <div className="stat">
+              <div className="stat-label">Critical / Severe</div>
+              <div className="stat-value" style={{ color: "#dc2626" }}>
+                {(dist.critical || 0) + (dist.severe || 0)}
               </div>
             </div>
-          )}
-
-          <div className="db-footer">
-            Last updated: {new Date().toLocaleTimeString()}
+            <div className="stat">
+              <div className="stat-label">ICU allocated</div>
+              <div className="stat-value" style={{ color: "#0f4c81" }}>{icuUsed}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Avg. score</div>
+              <div className="stat-value">{avgScore}</div>
+            </div>
           </div>
+
+          <div className="two-col">
+            <div className="col">
+              <div className="section-title">Severity distribution</div>
+              {sevGroups.map(({ key, label, color }) => {
+                const count = dist[key] || 0;
+                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                return (
+                  <div className="sev-row" key={key}>
+                    <span className="sev-name">{label}</span>
+                    <div className="sev-track">
+                      <div className="sev-fill" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                    <span className="sev-count">{count}</span>
+                    <span className="sev-pct">{pct}%</span>
+                  </div>
+                );
+              })}
+
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #f0f2f5" }}>
+                <div className="section-title">Resources available</div>
+                <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+                  <div>
+                    <div style={{ color: "#b0b8c1", fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>ICU beds</div>
+                    <div style={{ fontWeight: 500, color: "#0f4c81" }}>{resources.icu_beds ?? "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#b0b8c1", fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>Staff</div>
+                    <div style={{ fontWeight: 500 }}>{resources.emergency_staff ?? "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#b0b8c1", fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>Ventilators</div>
+                    <div style={{ fontWeight: 500 }}>{resources.ventilators ?? "—"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col">
+              <div className="section-title">Top priority patients</div>
+              {topCritical.length === 0 && (
+                <div style={{ fontSize: 12, color: "#9aa0a8" }}>No patients yet.</div>
+              )}
+              {topCritical.map((r) => {
+                const p = r.patient || {};
+                const res = r.result || {};
+                const color = SEV_COLORS[res.severity?.toLowerCase()] || "#9aa0a8";
+                return (
+                  <div className="crit-row" key={p.patient_id}>
+                    <span className="crit-id">{p.patient_id}</span>
+                    <div className="crit-vitals">
+                      <span>{p.name}</span>
+                      <span>{p.age}y</span>
+                      <span>HR {p.heart_rate}</span>
+                    </div>
+                    <span className="crit-score" style={{ color }}>{res.score?.toFixed(2)}</span>
+                    {r.allocated_resource && (
+                      <span className="crit-icu">{r.allocated_resource}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="foot">Last updated: {new Date().toLocaleTimeString()}</div>
         </>
       )}
-
-      <style>{`
-        .db-wrap {
-          background: var(--color-background-primary);
-          border: 0.5px solid var(--color-border-tertiary);
-          border-radius: var(--border-radius-lg);
-          overflow: hidden;
-        }
-        .db-header {
-          padding: 1rem 1.25rem;
-          border-bottom: 0.5px solid var(--color-border-tertiary);
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .db-title { font-size: 18px; font-weight: 500; margin: 0; color: var(--color-text-primary); }
-        .db-subtitle { font-size: 13px; color: var(--color-text-secondary); margin: 2px 0 0; }
-        .db-refresh {
-          font-size: 13px;
-          padding: 6px 12px;
-          border: 0.5px solid var(--color-border-secondary);
-          border-radius: var(--border-radius-md);
-          background: transparent;
-          cursor: pointer;
-          color: var(--color-text-secondary);
-        }
-        .db-state {
-          padding: 2rem;
-          text-align: center;
-          font-size: 14px;
-          color: var(--color-text-secondary);
-        }
-        .db-error { color: var(--color-text-danger); }
-        .db-stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-          gap: 0;
-          border-bottom: 0.5px solid var(--color-border-tertiary);
-        }
-        .db-stat {
-          padding: 1rem 1.25rem;
-          border-right: 0.5px solid var(--color-border-tertiary);
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .db-stat:last-child { border-right: none; }
-        .db-stat-top { display: flex; align-items: center; gap: 6px; }
-        .db-stat-icon { font-size: 16px; }
-        .db-stat-label { font-size: 12px; color: var(--color-text-secondary); }
-        .db-stat-value { font-size: 28px; font-weight: 500; line-height: 1; }
-        .db-section {
-          padding: 1rem 1.25rem;
-          border-bottom: 0.5px solid var(--color-border-tertiary);
-        }
-        .db-section-title {
-          font-size: 13px;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: var(--color-text-secondary);
-          margin: 0 0 12px;
-        }
-        .db-sev-list { display: flex; flex-direction: column; gap: 8px; }
-        .db-sev-row { display: flex; align-items: center; gap: 10px; }
-        .db-sev-label { font-size: 12px; font-weight: 500; width: 70px; color: var(--color-text-primary); }
-        .db-sev-track {
-          flex: 1;
-          height: 8px;
-          background: var(--color-background-tertiary);
-          border-radius: 4px;
-          overflow: hidden;
-        }
-        .db-sev-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
-        .db-sev-count { font-size: 13px; font-weight: 500; width: 24px; text-align: right; color: var(--color-text-primary); }
-        .db-sev-pct { font-size: 12px; color: var(--color-text-tertiary); width: 36px; text-align: right; }
-        .db-critical-list { display: flex; flex-direction: column; gap: 6px; }
-        .db-critical-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 10px;
-          background: #FFF5F5;
-          border-radius: var(--border-radius-md);
-          font-size: 13px;
-        }
-        .db-critical-id { font-family: var(--font-mono); font-weight: 500; color: var(--color-text-primary); min-width: 70px; }
-        .db-critical-info { display: flex; gap: 10px; color: var(--color-text-secondary); flex: 1; }
-        .db-critical-score { font-weight: 500; font-size: 16px; }
-        .db-critical-icu {
-          font-size: 11px;
-          font-weight: 500;
-          background: #A32D2D;
-          color: #fff;
-          padding: 2px 7px;
-          border-radius: 4px;
-        }
-        .db-footer {
-          padding: 8px 1.25rem;
-          font-size: 12px;
-          color: var(--color-text-tertiary);
-          text-align: right;
-        }
-      `}</style>
     </div>
   );
 }
