@@ -1,26 +1,20 @@
-const BASE_URL = "http://localhost:8000";
+const BASE = "http://localhost:8000";
 
-export async function predictPatient(patientData) {
-  const response = await fetch(`${BASE_URL}/predict`, {
+export async function admitPatient(data) {
+  const res = await fetch(`${BASE}/patients/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patientData),
+    body: JSON.stringify(data),
   });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || "Prediction failed");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Request failed");
   }
-  return response.json();
+  return res.json();
 }
 
-export async function getAllPatients() {
-  const response = await fetch(`${BASE_URL}/patients`);
-  if (!response.ok) throw new Error("Failed to fetch patients");
-  return response.json();
-}
-
-export async function getDashboardStats() {
-  const response = await fetch(`${BASE_URL}/dashboard`);
-  if (!response.ok) throw new Error("Failed to fetch dashboard stats");
-  return response.json();
+export async function getQueue() {
+  const res = await fetch(`${BASE}/patients/queue`);
+  if (!res.ok) throw new Error("Failed to fetch queue");
+  return res.json();
 }
