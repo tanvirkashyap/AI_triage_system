@@ -1,4 +1,4 @@
-const BASE = "https://your-app.up.railway.app";
+const BASE = "https://aitriagesystem-production-c1e8.up.railway.app";
 
 export async function admitPatient(data) {
   const res = await fetch(`${BASE}/patients/`, {
