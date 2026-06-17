@@ -1,6 +1,6 @@
-````markdown
-# 🏥 AI-Assisted Emergency Triage and Resource Allocation System
 
+# ResQLink: AI-Assisted Emergency Triage and Resource Allocation System
+[Check out the live app here](https://ai-triage-system-three.vercel.app/)
 ## Overview
 
 The AI-Assisted Emergency Triage and Resource Allocation System is a clinical decision-support platform designed to assist healthcare professionals and first responders during emergency and mass-casualty situations.
